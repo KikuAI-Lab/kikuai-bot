@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KikuAI - Top Up Balance</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --tg-theme-bg-color: #ffffff;
+            --tg-theme-text-color: #000000;
+            --tg-theme-hint-color: #999999;
+            --tg-theme-link-color: #2481cc;
+            --tg-theme-button-color: #2481cc;
+            --tg-theme-button-text-color: #ffffff;
+            --tg-theme-secondary-bg-color: #f0f0f0;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            min-height: 100vh;
+            padding: 16px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .header p {
+            color: var(--tg-theme-hint-color);
+            font-size: 14px;
+        }
+        
+        .section {
+            background: var(--tg-theme-secondary-bg-color);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color);
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .amount-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .amount-btn {
+            background: var(--tg-theme-bg-color);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            padding: 16px 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .amount-btn:hover {
+            border-color: var(--tg-theme-button-color);
+        }
+        
+        .amount-btn.selected {
+            border-color: var(--tg-theme-button-color);
+            background: rgba(36, 129, 204, 0.1);
+        }
+        
+        .method-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .method-btn {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--tg-theme-bg-color);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .method-btn:hover {
+            border-color: var(--tg-theme-button-color);
+        }
+        
+        .method-btn.selected {
+            border-color: var(--tg-theme-button-color);
+            background: rgba(36, 129, 204, 0.1);
+        }
+        
+        .method-icon {
+            font-size: 24px;
+        }
+        
+        .method-info {
+            flex: 1;
+            text-align: left;
+        }
+        
+        .method-name {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        
+        .method-desc {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color);
+        }
+        
+        .pay-button {
+            width: 100%;
+            background: var(--tg-theme-button-color);
+            color: var(--tg-theme-button-text-color);
+            border: none;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            margin-top: 16px;
+        }
+        
+        .pay-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pay-button:not(:disabled):hover {
+            opacity: 0.9;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--tg-theme-secondary-bg-color);
+            border-top-color: var(--tg-theme-button-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            display: none;
+        }
+        
+        .error.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-content">
+        <div class="header">
+            <h1>💰 Top Up Balance</h1>
+            <p>Add funds to your KikuAI account</p>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Select Amount</div>
+            <div class="amount-grid">
+                <button class="amount-btn" data-amount="5">$5</button>
+                <button class="amount-btn" data-amount="10">$10</button>
+                <button class="amount-btn selected" data-amount="25">$25</button>
+                <button class="amount-btn" data-amount="50">$50</button>
+                <button class="amount-btn" data-amount="100">$100</button>
+                <button class="amount-btn" data-amount="150">$150</button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">Payment Method</div>
+            <div class="method-list">
+                <button class="method-btn selected" data-method="paddle">
+                    <span class="method-icon">💳</span>
+                    <div class="method-info">
+                        <div class="method-name">Card / PayPal</div>
+                        <div class="method-desc">Pay with Visa, Mastercard, or PayPal</div>
+                    </div>
+                </button>
+                <button class="method-btn" data-method="stars">
+                    <span class="method-icon">⭐</span>
+                    <div class="method-info">
+                        <div class="method-name">Telegram Stars</div>
+                        <div class="method-desc">Instant, no fees</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+        
+        <button id="pay-btn" class="pay-button">Pay $25</button>
+        
+        <div id="error" class="error"></div>
+    </div>
+    
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Processing...</p>
+    </div>
+    
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        let selectedAmount = 25;
+        let selectedMethod = 'paddle';
+        
+        // Amount selection
+        document.querySelectorAll('.amount-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                selectedAmount = parseInt(btn.dataset.amount);
+                updatePayButton();
+            });
+        });
+        
+        // Method selection
+        document.querySelectorAll('.method-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.method-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                selectedMethod = btn.dataset.method;
+                updatePayButton();
+            });
+        });
+        
+        function updatePayButton() {
+            const btn = document.getElementById('pay-btn');
+            if (selectedMethod === 'stars') {
+                const stars = selectedAmount * 50;
+                btn.textContent = `Pay ${stars} ⭐`;
+            } else {
+                btn.textContent = `Pay $${selectedAmount}`;
+            }
+        }
+        
+        // Pay button
+        document.getElementById('pay-btn').addEventListener('click', async () => {
+            const mainContent = document.getElementById('main-content');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            
+            mainContent.style.display = 'none';
+            loading.classList.add('active');
+            error.classList.remove('active');
+            
+            try {
+                const response = await fetch('/api/v1/payment/topup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Telegram-Init-Data': tg.initData
+                    },
+                    body: JSON.stringify({
+                        amount_usd: selectedAmount,
+                        method: selectedMethod
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!data.success) {
+                    throw new Error(data.error?.message || 'Payment failed');
+                }
+                
+                if (selectedMethod === 'paddle' && data.data.checkout_url) {
+                    // Open Paddle checkout
+                    tg.openLink(data.data.checkout_url);
+                    tg.close();
+                } else if (selectedMethod === 'stars') {
+                    // Stars payment is handled by bot
+                    tg.sendData(JSON.stringify({
+                        action: 'pay_stars',
+                        amount: selectedAmount,
+                        stars: selectedAmount * 50
+                    }));
+                    tg.close();
+                }
+                
+            } catch (err) {
+                mainContent.style.display = 'block';
+                loading.classList.remove('active');
+                error.textContent = err.message;
+                error.classList.add('active');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Telegram Bot
+aiogram==3.13.1
+aiohttp==3.10.10
+
+# Backend API
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.0
+httpx==0.26.0
+
+# Database
+redis==5.0.0
+
+# Utilities
+python-dotenv==1.0.0
+
+# Testing
+pytest==8.0.0
+pytest-asyncio==0.23.0
+
+# Monitoring
+prometheus-client==0.21.0

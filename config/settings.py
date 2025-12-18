@@ -1,0 +1,26 @@
+"""Application settings."""
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL")
+
+# Database
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# Products
+RELIAPI_URL = os.getenv("RELIAPI_URL", "https://reliapi.kikuai.dev")
+
+# Web App
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://kikuai.dev/webapp")
+
+# Paddle
+PADDLE_API_KEY = os.getenv("PADDLE_API_KEY")
+PADDLE_VENDOR_ID = os.getenv("PADDLE_VENDOR_ID")
+PADDLE_WEBHOOK_SECRET = os.getenv("PADDLE_WEBHOOK_SECRET")
+PADDLE_ENVIRONMENT = os.getenv("PADDLE_ENVIRONMENT", "sandbox")  # sandbox or production
+

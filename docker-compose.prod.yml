@@ -1,0 +1,57 @@
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - kikuai-bot-network
+
+  bot:
+    build: .
+    depends_on:
+      - redis
+      - api
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - REDIS_URL=redis://redis:6379/0
+      - RELIAPI_URL=${RELIAPI_URL:-https://reliapi.kikuai.dev}
+      - PADDLE_API_KEY=${PADDLE_API_KEY}
+      - PADDLE_WEBHOOK_SECRET=${PADDLE_WEBHOOK_SECRET}
+      - PADDLE_ENVIRONMENT=${PADDLE_ENVIRONMENT:-production}
+      - WEBAPP_URL=${WEBAPP_URL:-https://bot.kikuai.dev/webapp}
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    networks:
+      - kikuai-bot-network
+    command: python -m bot.main
+
+  api:
+    build: .
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - PADDLE_API_KEY=${PADDLE_API_KEY}
+      - PADDLE_WEBHOOK_SECRET=${PADDLE_WEBHOOK_SECRET}
+      - PADDLE_ENVIRONMENT=${PADDLE_ENVIRONMENT:-production}
+      - WEBAPP_URL=${WEBAPP_URL:-https://bot.kikuai.dev/webapp}
+      - RELIAPI_URL=${RELIAPI_URL:-https://reliapi.kikuai.dev}
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+    networks:
+      - kikuai-bot-network
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  redis_data:
+
+networks:
+  kikuai-bot-network:
+    driver: bridge
+  kikuai-platform_public:
+    external: true
+

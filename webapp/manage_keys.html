@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage API Keys - KikuAI Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .key-card {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .key-label {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999999);
+            margin-bottom: 8px;
+        }
+        
+        .key-value {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            word-break: break-all;
+            background: var(--tg-theme-bg-color, #ffffff);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .button {
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 12px;
+        }
+        
+        .button:hover {
+            opacity: 0.9;
+        }
+        
+        .button.danger {
+            background: #ff3b30;
+        }
+        
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #34c759;
+            color: white;
+        }
+        
+        .status.error {
+            background: #ff3b30;
+            color: white;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔑 Manage API Keys</h1>
+        
+        <div id="status" class="status"></div>
+        
+        <div id="loading" class="loading">Loading...</div>
+        
+        <div id="key-card" class="key-card" style="display: none;">
+            <div class="key-label">Your API Key</div>
+            <div class="key-value" id="api-key">Loading...</div>
+            <button class="button" onclick="copyKey()">📋 Copy Key</button>
+            <button class="button danger" onclick="regenerateKey()">🔄 Regenerate Key</button>
+        </div>
+    </div>
+    
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        
+        let currentApiKey = '';
+        
+        // Get API key from bot
+        async function loadApiKey() {
+            try {
+                // Get user data from Telegram
+                const initData = tg.initData;
+                const user = tg.initDataUnsafe?.user;
+                
+                if (!user) {
+                    showError('Unable to get user data');
+                    return;
+                }
+                
+                // For now, we'll get the key from bot context
+                // In production, this should be an API call
+                // For MVP, we'll show a placeholder
+                currentApiKey = 'kikuai_loading...';
+                document.getElementById('api-key').textContent = currentApiKey;
+                document.getElementById('key-card').style.display = 'block';
+                document.getElementById('loading').style.display = 'none';
+                
+                // TODO: Make API call to get actual key
+                // const response = await fetch('/api/v1/api_keys', {
+                //     headers: {
+                //         'X-API-Key': currentApiKey
+                //     }
+                // });
+                
+            } catch (error) {
+                showError('Failed to load API key: ' + error.message);
+            }
+        }
+        
+        function copyKey() {
+            navigator.clipboard.writeText(currentApiKey).then(() => {
+                showSuccess('API key copied to clipboard!');
+            }).catch(() => {
+                showError('Failed to copy key');
+            });
+        }
+        
+        async function regenerateKey() {
+            if (!confirm('Are you sure? This will invalidate your current key.')) {
+                return;
+            }
+            
+            try {
+                // TODO: Make API call to regenerate key
+                showSuccess('Key regeneration will be implemented soon');
+            } catch (error) {
+                showError('Failed to regenerate key: ' + error.message);
+            }
+        }
+        
+        function showSuccess(message) {
+            const status = document.getElementById('status');
+            status.className = 'status success';
+            status.textContent = message;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+        
+        function showError(message) {
+            const status = document.getElementById('status');
+            status.className = 'status error';
+            status.textContent = message;
+            status.style.display = 'block';
+        }
+        
+        // Load on page load
+        loadApiKey();
+    </script>
+</body>
+</html>
+
