@@ -51,6 +51,7 @@ Built with AI-first principles, high security, and seamless user experience.
 - 📁 [docs/PAYMENT_FLOW.md](docs/PAYMENT_FLOW.md) - Detailed financial logic.
 - 📁 [docs/API_SPEC.md](docs/API_SPEC.md) - API endpoints and models.
 - 📁 [docs/SECURITY.md](docs/SECURITY.md) - Security measures and validation.
+- 📁 [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) - Manual testing checklist.
 
 ## Bot Commands
 
