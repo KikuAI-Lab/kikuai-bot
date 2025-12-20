@@ -1,17 +1,51 @@
 """FastAPI application."""
-from fastapi import FastAPI, Response, HTTPException
+from fastapi import FastAPI, Response, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+import json
 import os
 import logging
+import uuid
+from datetime import datetime
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
+from io import BytesIO
 
-from api.routes import api_keys, proxy, balance, payment, webhooks, webapp
+from api.routes import api_keys_v2 as api_keys, proxy, balance_v2 as balance, payment, webhooks, webapp, auth
 from api.dependencies import get_payment_engine
+from api.db.base import engine, AsyncSessionLocal, DebugLog
+from api.context import request_id_var, ip_address_var, user_agent_var, account_id_var, opt_in_debug_var
+import uuid
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+import json
+import os
+import logging
+import uuid
+from datetime import datetime
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+# Configure Structured Logging
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_obj = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "logger": record.name,
+        }
+        if hasattr(record, "request_id"):
+            log_obj["request_id"] = record.request_id
+        return json.dumps(log_obj)
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -20,6 +54,110 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Standardized Error Handler
+@app.exception_handler(ValueError)
+async def value_error_handler(request: Request, exc: ValueError):
+    # Extract error_code if provided as second argument
+    code = "VALIDATION_ERROR"
+    message = str(exc)
+    if len(exc.args) > 1:
+        message, code = exc.args[0], exc.args[1]
+    
+    return Response(
+        content=json.dumps({
+            "error": {
+                "code": code,
+                "message": message,
+                "request_id": request_id_var.get()
+            }
+        }),
+        status_code=400 if code != "BALANCE_EXHAUSTED" else 402,
+        media_type="application/json"
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global error: {exc}", extra={"request_id": request_id_var.get()})
+    return Response(
+        content=json.dumps({
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "An unexpected error occurred",
+                "request_id": request_id_var.get()
+            }
+        }),
+        status_code=500,
+        media_type="application/json"
+    )
+
+# Request Trace Middleware
+class RequestTraceMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        
+        # Tokenize and set context
+        token_rid = request_id_var.set(request_id)
+        token_ip = ip_address_var.set(request.client.host if request.client else None)
+        token_ua = user_agent_var.set(request.headers.get("user-agent"))
+        
+        logger.info(f"Incoming {request.method} {request.url.path}", extra={"request_id": request_id})
+        
+        # Capture request body for debug if needed
+        request_body = None
+        if request.method in ["POST", "PUT", "PATCH"]:
+            body_bytes = await request.body()
+            request_body = body_bytes.decode(errors="ignore")
+            # Must re-set body for downstream consumers
+            request._body = body_bytes
+
+        try:
+            response: Response = await call_next(request)
+            
+            # If opt-in debug is enabled, capture response and log
+            if opt_in_debug_var.get() and account_id_var.get():
+                response_body = b""
+                async for chunk in response.body_iterator:
+                    response_body += chunk
+                
+                # Re-wrap response
+                response = Response(
+                    content=response_body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type
+                )
+                
+                # Write debug log in background (simple async call here for brevity, or use BackgroundTasks if preferred)
+                await self._log_debug(
+                    account_id=account_id_var.get(),
+                    request_id=request_id,
+                    path=request.url.path,
+                    method=request.method,
+                    request_body=request_body,
+                    response_body=response_body.decode(errors="ignore"),
+                    status_code=response.status_code
+                )
+
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            # Reset context
+            request_id_var.reset(token_rid)
+            ip_address_var.reset(token_ip)
+            user_agent_var.reset(token_ua)
+
+    async def _log_debug(self, **kwargs):
+        """Async write to debug logs."""
+        try:
+            async with AsyncSessionLocal() as session:
+                log = DebugLog(**kwargs)
+                session.add(log)
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Failed to write DebugLog: {e}")
+
+app.add_middleware(RequestTraceMiddleware)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +165,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"]
 )
 
 # Initialize shared Payment Engine (singleton from dependencies)
@@ -34,7 +173,6 @@ payment_engine = get_payment_engine()
 
 # Set payment engine in routes
 payment.set_payment_engine(payment_engine)
-proxy.set_payment_engine(payment_engine)
 webhooks.set_payment_engine(payment_engine)
 
 # Serve webapp static files - use absolute path
@@ -78,6 +216,7 @@ app.include_router(balance.router)
 app.include_router(payment.router)
 app.include_router(webhooks.router)
 app.include_router(webapp.router)
+app.include_router(auth.router)
 
 # Additional webhook mount to support /api/webhooks/paddle (without /v1)
 app.add_api_route(

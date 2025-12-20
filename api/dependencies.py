@@ -16,7 +16,7 @@ from api.services.payment_engine import (
     PaddleProvider,
     TelegramStarsProvider,
 )
-from api.services.balance_manager import RedisBalanceManager
+from api.services.postgres_balance_manager import PostgresBalanceManager
 from api.services.notification_service import TelegramNotificationService
 
 
@@ -41,7 +41,7 @@ def get_payment_engine() -> PaymentEngine:
     Get or create PaymentEngine singleton.
     
     Initializes:
-    - RedisBalanceManager for balance operations
+    - PostgresBalanceManager for balance operations (SQL Ledger)
     - TelegramNotificationService for user notifications
     - PaddleProvider for card payments
     - TelegramStarsProvider for Stars payments
@@ -51,8 +51,8 @@ def get_payment_engine() -> PaymentEngine:
     if _payment_engine is None:
         redis_client = get_redis_client()
         
-        # Create managers (bot instance can be set later from bot runtime)
-        balance_manager = RedisBalanceManager()
+        # Create managers (PostgreSQL-backed for finances)
+        balance_manager = PostgresBalanceManager()
         notification_service = TelegramNotificationService()
         
         # Create engine
@@ -81,6 +81,6 @@ def get_payment_engine() -> PaymentEngine:
     return _payment_engine
 
 
-def get_balance_manager() -> RedisBalanceManager:
+def get_balance_manager() -> PostgresBalanceManager:
     """Get balance manager instance."""
-    return RedisBalanceManager()
+    return PostgresBalanceManager()

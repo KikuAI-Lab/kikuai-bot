@@ -43,10 +43,15 @@ class TopupResponse(BaseModel):
     expires_at: Optional[str] = None
 
 
+from api.middleware.auth import get_current_account
+from api.db.base import get_db, Account
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+
 @router.post("/topup", response_model=TopupResponse)
 async def create_topup(
     request: TopupRequest = Body(...),
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    account: Account = Depends(get_current_account),
 ):
     """Create payment checkout session."""
     if not _payment_engine:
@@ -55,8 +60,6 @@ async def create_topup(
             detail="Payment service not initialized"
         )
     
-    user_id = await verify_api_key(x_api_key)
-    
     # Validate amount
     if request.amount_usd < 5.0 or request.amount_usd > 1000.0:
         raise HTTPException(
@@ -64,9 +67,9 @@ async def create_topup(
             detail="Amount must be between $5 and $1000"
         )
     
-    # Create payment request
+    # Create payment request using telegram_id
     payment_request = PaymentRequest(
-        user_id=user_id,
+        user_id=account.telegram_id,
         amount_usd=Decimal(str(request.amount_usd)),
         method=request.method,
     )
@@ -104,11 +107,10 @@ async def create_topup(
             detail=str(e)
         )
 
-
 @router.get("/{payment_id}")
 async def get_payment_status(
     payment_id: str,
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    account: Account = Depends(get_current_account),
 ):
     """Get payment status."""
     if not _payment_engine:
@@ -117,13 +119,10 @@ async def get_payment_status(
             detail="Payment service not initialized"
         )
     
-    user_id = await verify_api_key(x_api_key)
-    
-    # TODO: Implement payment status lookup
-    # For now, return placeholder
     return {
         "payment_id": payment_id,
         "status": "pending",
+        "user_id": account.telegram_id,
         "message": "Status check not yet implemented"
     }
 

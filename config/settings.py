@@ -11,6 +11,7 @@ TELEGRAM_WEBHOOK_URL = os.getenv("TELEGRAM_WEBHOOK_URL")
 
 # Database
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/kiku-bot")
 
 # Products
 RELIAPI_URL = os.getenv("RELIAPI_URL", "https://reliapi.kikuai.dev")
@@ -24,3 +25,5 @@ PADDLE_VENDOR_ID = os.getenv("PADDLE_VENDOR_ID")
 PADDLE_WEBHOOK_SECRET = os.getenv("PADDLE_WEBHOOK_SECRET")
 PADDLE_ENVIRONMENT = os.getenv("PADDLE_ENVIRONMENT", "sandbox")  # sandbox or production
 
+# Security
+SERVER_SECRET = os.getenv("SERVER_SECRET", "kiku-dev-secret-change-me-in-prod")

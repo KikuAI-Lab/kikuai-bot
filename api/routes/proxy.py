@@ -14,16 +14,6 @@ from api.services.payment_engine import PaymentEngine, InsufficientBalanceError
 router = APIRouter(prefix="/api/v1/proxy", tags=["proxy"])
 
 reliapi_service = ReliAPIService()
-usage_tracker = UsageTracker()
-
-# PaymentEngine will be initialized in main.py and passed here
-_payment_engine: Optional[PaymentEngine] = None
-
-
-def set_payment_engine(engine: PaymentEngine):
-    """Set payment engine instance."""
-    global _payment_engine
-    _payment_engine = engine
 
 
 class LLMRequest(BaseModel):
@@ -47,195 +37,102 @@ class HTTPRequest(BaseModel):
     max_retries: int = 3
 
 
+from api.middleware.auth import require_scope
+from api.services.usage_tracker_v2 import UsageTracker
+from api.db.base import get_db, Account
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Use v2 UsageTracker
+usage_tracker_v2 = True # Flag/Marker
+
 @router.post("/llm")
 async def proxy_llm(
     request: LLMRequest = Body(...),
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    account: Account = Depends(require_scope("reliapi:llm")),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Proxy LLM request to ReliAPI."""
-    # Verify API key and get user_id
-    user_id = await verify_api_key(x_api_key)
+    """Proxy LLM request to ReliAPI with atomic charging."""
+    tracker = UsageTracker(db)
     
-    # Get user to check balance
-    user = await get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Estimate cost (simplified - in production, use actual pricing)
-    estimated_cost = Decimal("0.001")  # $0.001 per request estimate
-    
-    # Check balance and charge if payment engine available
-    if _payment_engine:
-        try:
-            transaction = await _payment_engine.charge_usage(
-                user_id=user_id,
-                amount=estimated_cost,
-                product_id="reliapi",
-                details={
-                    "endpoint": "proxy/llm",
-                    "model": request.model,
-                    "target": request.target,
-                }
-            )
-        except InsufficientBalanceError as e:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Insufficient balance: ${e.current:.2f} available, ${e.required:.2f} required"
-            )
+    # Use request's idempotency key or generate one
+    idempotency_key = request.idempotency_key or f"llm_{account.id}_{secrets.token_hex(8)}"
     
     try:
-        # Proxy request to ReliAPI
-        # Note: We need to use the user's ReliAPI key, not our bot's key
-        # For MVP, we'll use a placeholder
-        reliapi_key = x_api_key  # In production, map to user's ReliAPI key
+        # 1. Proxy request to ReliAPI
+        reliapi_key = secrets.token_urlsafe(32) # Placeholder for internal routing
         
         result = await reliapi_service.proxy_llm_request(
             api_key=reliapi_key,
             request_data=request.dict(),
         )
         
-        # Get actual cost from response if available
-        actual_cost = Decimal(str(result.get("meta", {}).get("cost_usd", 0.0)))
+        # 2. Extract actual cost (default if missing)
+        actual_cost_usd = Decimal(str(result.get("meta", {}).get("cost_usd", "0.001")))
         
-        # Track usage
-        usage_tracker.track_request(
-            user_id=user_id,
-            endpoint="proxy/llm",
-            cost_usd=float(actual_cost),
+        # 3. ATOMIC CHARGE & RECORD in Ledger
+        await tracker.track_usage(
+            telegram_id=account.telegram_id,
+            product_id="reliapi",
+            idempotency_key=idempotency_key,
+            units=1,
+            metadata={
+                "endpoint": "proxy/llm",
+                "model": request.model,
+                "target": request.target,
+                "actual_cost": float(actual_cost_usd)
+            }
         )
-        
-        # If actual cost differs from estimated, adjust balance
-        # (For MVP, we'll skip this complexity)
         
         return result
     
-    except HTTPException:
-        # Re-raise HTTP exceptions (like 402 Payment Required)
-        raise
+    except ValueError as e:
+        # Handle "Insufficient balance" or "Already processed"
+        raise HTTPException(status_code=402, detail=str(e))
     except Exception as e:
-        # Refund if request failed after charging
-        if _payment_engine and estimated_cost > 0:
-            try:
-                # Refund the charge using balance manager directly
-                from api.services.balance_manager import RedisBalanceManager
-                from api.services.payment_engine import Transaction, TransactionType
-                balance_manager = RedisBalanceManager()
-                current_balance = await balance_manager.get_balance(user_id)
-                refund_txn = Transaction(
-                    id=f"refund_{secrets.token_hex(8)}",
-                    user_id=user_id,
-                    type=TransactionType.REFUND,
-                    amount_usd=estimated_cost,
-                    balance_before=current_balance,
-                    balance_after=current_balance + estimated_cost,
-                    source="reliapi",
-                    metadata={"reason": "request_failed", "original_endpoint": "proxy/llm"}
-                )
-                await balance_manager.update_balance(
-                    user_id=user_id,
-                    amount=estimated_cost,
-                    transaction=refund_txn,
-                    idempotency_key=f"refund_{user_id}_{secrets.token_hex(8)}"
-                )
-            except Exception as refund_error:
-                # Log but don't fail the error response
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to refund charge for user {user_id}: {refund_error}")
-        
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 
 @router.post("/http")
 async def proxy_http(
     request: HTTPRequest = Body(...),
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    account: Account = Depends(require_scope("reliapi:http")),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Proxy HTTP request to ReliAPI."""
-    # Verify API key and get user_id
-    user_id = await verify_api_key(x_api_key)
-    
-    # Get user to check balance
-    user = await get_user(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Estimate cost (simplified - HTTP proxy might have lower cost)
-    estimated_cost = Decimal("0.0005")  # $0.0005 per request estimate
-    
-    # Check balance and charge if payment engine available
-    if _payment_engine:
-        try:
-            transaction = await _payment_engine.charge_usage(
-                user_id=user_id,
-                amount=estimated_cost,
-                product_id="reliapi",
-                details={
-                    "endpoint": "proxy/http",
-                    "method": request.method,
-                    "url": request.url,
-                }
-            )
-        except InsufficientBalanceError as e:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail=f"Insufficient balance: ${e.current:.2f} available, ${e.required:.2f} required"
-            )
+    """Proxy HTTP request to ReliAPI with atomic charging."""
+    tracker = UsageTracker(db)
+    idempotency_key = request.idempotency_key or f"http_{account.id}_{secrets.token_hex(8)}"
     
     try:
-        # Proxy request to ReliAPI
-        reliapi_key = x_api_key  # In production, map to user's ReliAPI key
+        # 1. Proxy request to ReliAPI
+        reliapi_key = secrets.token_urlsafe(32)
         
         result = await reliapi_service.proxy_http_request(
             api_key=reliapi_key,
             request_data=request.dict(),
         )
         
-        # Get actual cost from response if available
-        actual_cost = Decimal(str(result.get("meta", {}).get("cost_usd", 0.0)))
+        # 2. Extract actual cost
+        actual_cost_usd = Decimal(str(result.get("meta", {}).get("cost_usd", "0.0005")))
         
-        # Track usage
-        usage_tracker.track_request(
-            user_id=user_id,
-            endpoint="proxy/http",
-            cost_usd=float(actual_cost),
+        # 3. ATOMIC CHARGE & RECORD
+        await tracker.track_usage(
+            telegram_id=account.telegram_id,
+            product_id="reliapi",
+            idempotency_key=idempotency_key,
+            units=1,
+            metadata={
+                "endpoint": "proxy/http",
+                "method": request.method,
+                "url": request.url,
+                "actual_cost": float(actual_cost_usd)
+            }
         )
         
         return result
     
-    except HTTPException:
-        # Re-raise HTTP exceptions (like 402 Payment Required)
-        raise
+    except ValueError as e:
+        raise HTTPException(status_code=402, detail=str(e))
     except Exception as e:
-        # Refund if request failed after charging
-        if _payment_engine and estimated_cost > 0:
-            try:
-                # Refund the charge using balance manager directly
-                from api.services.balance_manager import RedisBalanceManager
-                from api.services.payment_engine import Transaction, TransactionType
-                balance_manager = RedisBalanceManager()
-                current_balance = await balance_manager.get_balance(user_id)
-                refund_txn = Transaction(
-                    id=f"refund_{secrets.token_hex(8)}",
-                    user_id=user_id,
-                    type=TransactionType.REFUND,
-                    amount_usd=estimated_cost,
-                    balance_before=current_balance,
-                    balance_after=current_balance + estimated_cost,
-                    source="reliapi",
-                    metadata={"reason": "request_failed", "original_endpoint": "proxy/http"}
-                )
-                await balance_manager.update_balance(
-                    user_id=user_id,
-                    amount=estimated_cost,
-                    transaction=refund_txn,
-                    idempotency_key=f"refund_{user_id}_{secrets.token_hex(8)}"
-                )
-            except Exception as refund_error:
-                # Log but don't fail the error response
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to refund charge for user {user_id}: {refund_error}")
-        
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
