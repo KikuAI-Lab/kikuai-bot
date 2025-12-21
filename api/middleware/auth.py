@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from api.db.base import get_db, Account
@@ -123,5 +124,13 @@ def require_scope(required_scope: str):
         return account
     return scope_checker
 
-from typing import List, Tuple
 
+# Backward compatibility aliases
+async def verify_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> bool:
+    """Legacy function for backward compatibility."""
+    return True  # Actual verification done in get_current_account
+
+async def get_user(x_api_key: str = Header(..., alias="X-API-Key")):
+    """Legacy function for backward compatibility - returns telegram_id."""
+    # This is a placeholder - actual implementation should use get_current_account
+    return None

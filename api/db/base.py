@@ -10,8 +10,15 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from config.settings import POSTGRES_URL
 
-engine = create_async_engine(POSTGRES_URL, echo=False)
+# statement_cache_size=0 is required for pgbouncer/Supavisor compatibility
+# (they don't support prepared statements in transaction mode)
+engine = create_async_engine(
+    POSTGRES_URL, 
+    echo=False,
+    connect_args={"prepared_statement_cache_size": 0, "statement_cache_size": 0}
+)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
 
 class Base(AsyncAttrs, DeclarativeBase):
     pass

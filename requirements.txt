@@ -17,6 +17,7 @@ redis==5.0.0
 # Utilities
 python-dotenv==1.0.0
 pyjwt==2.8.0
+email-validator==2.1.0
 
 # Testing
 pytest==8.0.0

@@ -21,7 +21,13 @@ services:
       - PADDLE_WEBHOOK_SECRET=${PADDLE_WEBHOOK_SECRET}
       - PADDLE_ENVIRONMENT=${PADDLE_ENVIRONMENT:-production}
       - WEBAPP_URL=${WEBAPP_URL:-https://bot.kikuai.dev/webapp}
+      - POSTGRES_URL=${POSTGRES_URL}
+      - SERVER_SECRET=${SERVER_SECRET}
       - PYTHONPATH=/app
+    dns:
+      - 185.12.64.2
+      - 185.12.64.1
+      - 8.8.8.8
     restart: unless-stopped
     networks:
       - kikuai-bot-network
@@ -39,6 +45,12 @@ services:
       - PADDLE_ENVIRONMENT=${PADDLE_ENVIRONMENT:-production}
       - WEBAPP_URL=${WEBAPP_URL:-https://bot.kikuai.dev/webapp}
       - RELIAPI_URL=${RELIAPI_URL:-https://reliapi.kikuai.dev}
+      - POSTGRES_URL=${POSTGRES_URL}
+      - SERVER_SECRET=${SERVER_SECRET}
+    dns:
+      - 185.12.64.2
+      - 185.12.64.1
+      - 8.8.8.8
     ports:
       - "8003:8000"
     restart: unless-stopped
@@ -49,9 +61,9 @@ services:
 volumes:
   redis_data:
 
+
 networks:
   kikuai-bot-network:
     driver: bridge
   kikuai-platform_public:
     external: true
-

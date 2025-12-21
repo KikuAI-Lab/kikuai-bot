@@ -1,5 +1,4 @@
 """API routes module."""
 
-from . import api_keys, proxy, balance, payment, webhooks, webapp
-
-__all__ = ["api_keys", "proxy", "balance", "payment", "webhooks", "webapp"]
+# Do not import all routes here - they are imported directly in main.py
+# This prevents circular import issues

@@ -1,5 +1,6 @@
 from contextvars import ContextVar
 from typing import Optional
+from uuid import UUID
 
 # Request-scoped context variables
 request_id_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
