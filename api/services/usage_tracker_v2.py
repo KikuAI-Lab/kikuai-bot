@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.db.base import UsageLog, Account, Product
 from api.services.ledger_balance import LedgerBalanceService, redis_client
 
+# Simple in-memory cache for product pricing to reduce DB hits
+_product_price_cache = {}  # product_id -> (price: Decimal, timestamp: float)
+_product_price_cache_ttl = 300  # 5 minutes
+
 class UsageTracker:
     """Refactored UsageTracker using PostgreSQL as the Ledger and Redis as Buffer."""
     
@@ -28,15 +32,22 @@ class UsageTracker:
         Track usage for a product and deduct cost.
         Requires an idempotency_key from the request layer.
         """
-        # Get product pricing
-        stmt = select(Product).where(Product.id == product_id)
-        result = await self.session.execute(stmt)
-        product = result.scalar_one_or_none()
+        # Get product pricing (with caching)
+        price = self._get_cached_price(product_id)
         
-        if not product:
-            raise ValueError(f"Product {product_id} not found")
+        if price is None:
+            # Cache miss - fetch from DB
+            stmt = select(Product).where(Product.id == product_id)
+            result = await self.session.execute(stmt)
+            product = result.scalar_one_or_none()
+
+            if not product:
+                raise ValueError(f"Product {product_id} not found")
             
-        cost = Decimal(str(product.base_price_per_unit)) * units
+            price = Decimal(str(product.base_price_per_unit))
+            self._set_cached_price(product_id, price)
+
+        cost = price * units
         
         # Record in PostgreSQL (Ledger + UsageLog)
         new_balance = await self.ledger.record_usage(
@@ -53,6 +64,20 @@ class UsageTracker:
         redis_client.incrby(f"usage:{telegram_id}:{month}:{product_id}", units)
         
         return new_balance
+
+    def _get_cached_price(self, product_id: str) -> Optional[Decimal]:
+        """Get price from local cache if valid."""
+        if product_id in _product_price_cache:
+            price, timestamp = _product_price_cache[product_id]
+            if datetime.utcnow().timestamp() - timestamp < _product_price_cache_ttl:
+                return price
+            else:
+                del _product_price_cache[product_id]
+        return None
+
+    def _set_cached_price(self, product_id: str, price: Decimal):
+        """Update local cache."""
+        _product_price_cache[product_id] = (price, datetime.utcnow().timestamp())
 
     async def get_usage_stats(self, telegram_id: int, month: Optional[str] = None) -> Dict[str, Any]:
         """Get summarized usage stats from PostgreSQL."""
