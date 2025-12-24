@@ -1,34 +1,22 @@
 """FastAPI application."""
-from fastapi import FastAPI, Response, HTTPException, BackgroundTasks
+import json
+import logging
+import os
+import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime
+
+from fastapi import FastAPI, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-import json
-import os
-import logging
-import uuid
-from datetime import datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import StreamingResponse
-from io import BytesIO
 
 from api.routes import api_keys_v2 as api_keys, proxy, balance_v2 as balance, payment, webhooks, webapp, auth
 from api.dependencies import get_payment_engine
-from api.db.base import engine, AsyncSessionLocal, DebugLog
+from api.db.base import AsyncSessionLocal, DebugLog
 from api.context import request_id_var, ip_address_var, user_agent_var, account_id_var, opt_in_debug_var
-import uuid
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-
-import json
-import os
-import logging
-import uuid
-from datetime import datetime
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 # Configure Structured Logging
 class JsonFormatter(logging.Formatter):
@@ -48,10 +36,32 @@ handler.setFormatter(JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
+# Webapp path for serving static files
+webapp_path = "/app/webapp"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler."""
+    # Startup
+    if os.path.exists(webapp_path):
+        logger.info(f"Webapp available at: {webapp_path}")
+        files = os.listdir(webapp_path)
+        logger.info(f"Webapp files: {files}")
+    else:
+        logger.warning(f"Webapp directory not found at: {webapp_path}")
+
+    yield
+
+    # Shutdown (if needed)
+    logger.info("Application shutting down")
+
+
 app = FastAPI(
     title="KikuAI Bot API",
     description="Backend API for KikuAI Telegram bot",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Standardized Error Handler
@@ -158,10 +168,14 @@ class RequestTraceMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestTraceMiddleware)
 
-# CORS middleware
+# CORS middleware - configure allowed origins from environment
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "https://kikuai.dev,https://bot.kikuai.dev").split(",")
+if os.getenv("ENVIRONMENT", "development") == "development":
+    ALLOWED_ORIGINS = ["*"]  # Allow all in development
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -174,9 +188,6 @@ payment_engine = get_payment_engine()
 # Set payment engine in routes
 payment.set_payment_engine(payment_engine)
 webhooks.set_payment_engine(payment_engine)
-
-# Serve webapp static files - use absolute path
-webapp_path = "/app/webapp"
 
 # Direct routes for webapp files (BEFORE routers to ensure they work)
 @app.get("/webapp/dashboard.html")
@@ -242,16 +253,3 @@ async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
-    # Log webapp status
-    if os.path.exists(webapp_path):
-        logger.info(f"Webapp available at: {webapp_path}")
-        files = os.listdir(webapp_path)
-        logger.info(f"Webapp files: {files}")
-    else:
-        logger.warning(f"Webapp directory not found at: {webapp_path}")
-    # Set bot instance in notification service if available
-    # (Bot instance will be set from bot/main.py if running together)
-    pass
