@@ -9,7 +9,6 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Header, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.middleware.auth import require_scope, verify_api_key_optional
 from api.services.usage_tracker_v2 import UsageTracker
 from api.db.base import get_db, Account
 from api.dependencies import get_redis
@@ -66,14 +65,14 @@ async def extract_chart(
     # Get client IP
     client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else "unknown"
     
-    # Check authentication
+    # Check authentication (optional)
     account = None
     if x_api_key:
         try:
-            # Verify API key and get account
-            from api.middleware.auth import verify_api_key
-            account = await verify_api_key(x_api_key, db)
-        except HTTPException:
+            from api.services.account_service import AccountService
+            account_service = AccountService(db)
+            account, _ = await account_service.verify_key(x_api_key)
+        except Exception:
             # Invalid key, treat as anonymous
             pass
     
