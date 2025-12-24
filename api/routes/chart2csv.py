@@ -18,8 +18,8 @@ router = APIRouter(prefix="/api/v1/chart2csv", tags=["chart2csv"])
 # Chart2CSV API URL - use public endpoint (runs as separate service)
 CHART2CSV_API = "https://chart2csv.kikuai.dev"
 
-# Pricing
-CREDITS_PER_EXTRACTION = Decimal("0.01")  # $0.01 per extraction
+# Pricing - MUST MATCH products table in DB (see 001_initial_schema.sql)
+CREDITS_PER_EXTRACTION = Decimal("0.05")  # $0.05 per image extraction
 FREE_DAILY_LIMIT = 3
 
 
@@ -46,6 +46,7 @@ async def extract_chart(
     file: UploadFile = File(...),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     x_forwarded_for: Optional[str] = Header(None, alias="X-Forwarded-For"),
+    cf_connecting_ip: Optional[str] = Header(None, alias="CF-Connecting-IP"),
     db: AsyncSession = Depends(get_db),
     redis = Depends(get_redis),
 ):
@@ -54,7 +55,7 @@ async def extract_chart(
     
     **Authentication:**
     - Without API key: 3 free extractions per day per IP
-    - With API key: Uses credit balance (1 credit = $0.01)
+    - With API key: Uses credit balance ($0.05 per extraction)
     
     **Responses:**
     - 200: Extraction successful
@@ -62,8 +63,8 @@ async def extract_chart(
     - 429: Free tier limit exceeded
     - 500: Extraction failed
     """
-    # Get client IP
-    client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else "unknown"
+    # Get client IP - prefer CF-Connecting-IP (trusted, set by Cloudflare)
+    client_ip = cf_connecting_ip or (x_forwarded_for.split(",")[0].strip() if x_forwarded_for else "unknown")
     
     # Check authentication (optional)
     account = None
