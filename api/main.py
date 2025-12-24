@@ -50,6 +50,15 @@ async def lifespan(app: FastAPI):
         logger.info(f"Webapp files: {files}")
     else:
         logger.warning(f"Webapp directory not found at: {webapp_path}")
+    
+    # Initialize Brevo email service
+    from config.settings import BREVO_API_KEY
+    if BREVO_API_KEY:
+        from api.services.email_service import configure_brevo
+        configure_brevo(BREVO_API_KEY)
+        logger.info("Brevo email service configured")
+    else:
+        logger.warning("BREVO_API_KEY not set, email sending disabled")
 
     yield
 

@@ -27,3 +27,6 @@ PADDLE_ENVIRONMENT = os.getenv("PADDLE_ENVIRONMENT", "sandbox")  # sandbox or pr
 
 # Security
 SERVER_SECRET = os.getenv("SERVER_SECRET", "kiku-dev-secret-change-me-in-prod")
+
+# Email (Brevo)
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")
