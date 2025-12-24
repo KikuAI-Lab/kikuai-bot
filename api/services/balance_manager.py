@@ -28,7 +28,7 @@ class RedisBalanceManager(BalanceManager):
             user_dict = json.loads(user_data)
             balance = user_dict.get("balance_usd", 0.0)
             return Decimal(str(balance))
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return Decimal("0.00")
     
     async def update_balance(

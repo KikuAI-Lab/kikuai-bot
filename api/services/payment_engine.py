@@ -10,13 +10,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-import secrets
+import asyncio
 import hashlib
 import json
 import logging
+import secrets
 import time
-import asyncio
 from typing import Optional, Any, List, Dict, Union
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -786,11 +788,11 @@ class PaddleProvider(PaymentProvider):
         custom_data_str = data.get("custom_data", "{}")
         try:
             custom_data = json.loads(custom_data_str)
-        except:
+        except json.JSONDecodeError:
             custom_data = {}
-        
+
         user_id = custom_data.get("user_id")
-        
+
         logger.warning(
             f"Paddle payment failed: transaction={transaction_id}, "
             f"user={user_id}, error={error_code}"
@@ -811,9 +813,9 @@ class PaddleProvider(PaymentProvider):
             
             try:
                 custom_data = json.loads(custom_data_str)
-            except:
+            except json.JSONDecodeError:
                 custom_data = {}
-            
+
             user_id = int(custom_data.get("user_id", 0))
             
             if not user_id:

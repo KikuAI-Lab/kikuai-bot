@@ -9,18 +9,27 @@ Endpoints:
 - GET /api/v1/auth/me - Get current user info
 """
 
+import json
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+import redis
 from fastapi import APIRouter, HTTPException, Depends, Body, Header
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.base import get_db, Account
 from api.services.auth_service import AuthService, TokenPair, UserInfo
+from config.settings import REDIS_URL
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+# Redis client for refresh token storage
+_redis_client = redis.from_url(REDIS_URL)
+REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60  # 7 days in seconds
 
 
 class MagicLinkRequest(BaseModel):
@@ -55,9 +64,31 @@ class AccountResponse(BaseModel):
     created_at: datetime
 
 
-# Simple in-memory refresh token storage (replace with Redis/DB in production)
-# Format: {token_hash: {"account_id": UUID, "expires_at": datetime}}
-_refresh_tokens: dict = {}
+def _store_refresh_token(token_hash: str, account_id: UUID) -> None:
+    """Store refresh token in Redis with TTL."""
+    key = f"refresh_token:{token_hash}"
+    data = json.dumps({"account_id": str(account_id)})
+    _redis_client.setex(key, REFRESH_TOKEN_TTL, data)
+
+
+def _get_refresh_token(token_hash: str) -> Optional[dict]:
+    """Get refresh token data from Redis."""
+    key = f"refresh_token:{token_hash}"
+    data = _redis_client.get(key)
+    if not data:
+        return None
+    try:
+        parsed = json.loads(data)
+        parsed["account_id"] = UUID(parsed["account_id"])
+        return parsed
+    except (json.JSONDecodeError, ValueError, KeyError):
+        return None
+
+
+def _delete_refresh_token(token_hash: str) -> None:
+    """Delete refresh token from Redis."""
+    key = f"refresh_token:{token_hash}"
+    _redis_client.delete(key)
 
 
 async def get_current_user(
@@ -124,13 +155,10 @@ async def verify_magic_link(
     
     # Create token pair
     token_pair, refresh_hash = AuthService.create_token_pair(account)
-    
-    # Store refresh token
-    _refresh_tokens[refresh_hash] = {
-        "account_id": account.id,
-        "expires_at": datetime.utcnow() + timedelta(days=7)
-    }
-    
+
+    # Store refresh token in Redis
+    _store_refresh_token(refresh_hash, account.id)
+
     return token_pair
 
 
@@ -159,13 +187,10 @@ async def login_with_telegram(
     
     # Create token pair
     token_pair, refresh_hash = AuthService.create_token_pair(account)
-    
-    # Store refresh token
-    _refresh_tokens[refresh_hash] = {
-        "account_id": account.id,
-        "expires_at": datetime.utcnow() + timedelta(days=7)
-    }
-    
+
+    # Store refresh token in Redis
+    _store_refresh_token(refresh_hash, account.id)
+
     return token_pair
 
 
@@ -176,33 +201,26 @@ async def refresh_access_token(
 ):
     """Refresh an access token using a refresh token."""
     token_hash = AuthService.hash_refresh_token(request.refresh_token)
-    
-    token_data = _refresh_tokens.get(token_hash)
+
+    token_data = _get_refresh_token(token_hash)
     if not token_data:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
-    
-    if datetime.utcnow() > token_data["expires_at"]:
-        del _refresh_tokens[token_hash]
-        raise HTTPException(status_code=401, detail="Refresh token expired")
-    
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
     # Get account
     account = await AuthService.get_account_by_id(db, token_data["account_id"])
     if not account:
-        del _refresh_tokens[token_hash]
+        _delete_refresh_token(token_hash)
         raise HTTPException(status_code=401, detail="Account not found")
-    
+
     # Rotate refresh token (delete old, create new)
-    del _refresh_tokens[token_hash]
-    
+    _delete_refresh_token(token_hash)
+
     # Create new token pair
     new_token_pair, new_refresh_hash = AuthService.create_token_pair(account)
-    
-    # Store new refresh token
-    _refresh_tokens[new_refresh_hash] = {
-        "account_id": account.id,
-        "expires_at": datetime.utcnow() + timedelta(days=7)
-    }
-    
+
+    # Store new refresh token in Redis
+    _store_refresh_token(new_refresh_hash, account.id)
+
     return new_token_pair
 
 
@@ -212,10 +230,7 @@ async def logout(
 ):
     """Logout by invalidating the refresh token."""
     token_hash = AuthService.hash_refresh_token(request.refresh_token)
-    
-    if token_hash in _refresh_tokens:
-        del _refresh_tokens[token_hash]
-    
+    _delete_refresh_token(token_hash)
     return {"status": "success", "message": "Logged out successfully"}
 
 

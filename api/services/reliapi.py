@@ -59,7 +59,7 @@ class ReliAPIService:
         try:
             response = await self.client.get(f"{self.base_url}/healthz", timeout=5.0)
             return response.status_code == 200
-        except:
+        except (httpx.RequestError, httpx.TimeoutException):
             return False
     
     async def close(self):
