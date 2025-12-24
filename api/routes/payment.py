@@ -30,7 +30,9 @@ def set_payment_engine(engine: PaymentEngine):
 class TopupRequest(BaseModel):
     """Top-up request model."""
     amount_usd: float
-    method: PaymentMethod
+    method: PaymentMethod = PaymentMethod.PADDLE  # Default to paddle
+    success_url: Optional[str] = None  # Optional override from frontend
+    cancel_url: Optional[str] = None
 
 
 class TopupResponse(BaseModel):
@@ -74,9 +76,9 @@ async def create_topup(
         method=request.method,
     )
     
-    # Generate URLs
-    success_url = f"{WEBAPP_URL}/payment/success?session={{checkout_id}}"
-    cancel_url = f"{WEBAPP_URL}/payment/cancel"
+    # Use frontend URLs if provided, otherwise default
+    success_url = request.success_url or f"{WEBAPP_URL}/payment/success?session={{checkout_id}}"
+    cancel_url = request.cancel_url or f"{WEBAPP_URL}/payment/cancel"
     
     try:
         # Create payment

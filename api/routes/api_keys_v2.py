@@ -19,9 +19,13 @@ class APIKeyResponse(BaseModel):
     created_at: str
     last_used_at: Optional[str]
 
+class APIKeyCreateRequest(BaseModel):
+    name: str = "new_key"
+    scopes: Optional[List[str]] = None
+
 class APIKeyCreateResponse(BaseModel):
     id: str
-    raw_key: str # Full kikuai_pref_secret
+    key: str  # Full kikuai_pref_secret (renamed from raw_key for frontend)
     prefix: str
     label: str
 
@@ -52,8 +56,7 @@ async def list_api_keys(
 
 @router.post("", response_model=APIKeyCreateResponse)
 async def create_api_key(
-    label: str = "new_key",
-    scopes: List[str] = None,
+    request: APIKeyCreateRequest,
     account: Account = Depends(get_current_account),
     db: AsyncSession = Depends(get_db)
 ):
@@ -61,8 +64,8 @@ async def create_api_key(
     account_service = AccountService(db)
     raw_key = await account_service.create_api_key(
         account_id=account.id, 
-        label=label, 
-        scopes=scopes or [],
+        label=request.name,  # Use 'name' from request as 'label'
+        scopes=request.scopes or [],
         actor_id=str(account.telegram_id)
     )
     
@@ -76,7 +79,7 @@ async def create_api_key(
     
     return APIKeyCreateResponse(
         id=str(key_obj.id),
-        raw_key=raw_key,
+        key=raw_key,  # Frontend expects 'key', not 'raw_key'
         prefix=prefix,
         label=key_obj.label
     )
