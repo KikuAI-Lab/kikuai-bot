@@ -722,19 +722,25 @@ class PaddleProvider(PaymentProvider):
         
         try:
             transaction_id = data.get("id")
-            custom_data_str = data.get("custom_data", "{}")
+            custom_data_raw = data.get("custom_data", {})
             
-            # Parse custom data
-            try:
-                custom_data = json.loads(custom_data_str)
-            except json.JSONDecodeError:
+            # Parse custom data - Paddle may send as object or JSON string
+            if isinstance(custom_data_raw, str):
+                try:
+                    custom_data = json.loads(custom_data_raw)
+                except json.JSONDecodeError:
+                    custom_data = {}
+            elif isinstance(custom_data_raw, dict):
+                custom_data = custom_data_raw
+            else:
                 custom_data = {}
             
-            user_id = int(custom_data.get("user_id", 0))
-            amount_str = custom_data.get("amount_usd", "0")
+            # Get user_id - frontend sends as "user_id" with telegram_id value
+            user_id_str = custom_data.get("user_id", "0")
+            user_id = int(user_id_str) if user_id_str else 0
             
             if not user_id:
-                logger.error(f"Missing user_id in Paddle transaction {transaction_id}")
+                logger.error(f"Missing user_id in Paddle transaction {transaction_id}, custom_data: {custom_data}")
                 return None
             
             # Get actual amount from Paddle
@@ -745,13 +751,15 @@ class PaddleProvider(PaymentProvider):
             # Convert from cents to dollars
             amount_usd = Decimal(paddle_amount) / 100
             
-            # Validate amount matches expected
-            expected_amount = Decimal(amount_str) if amount_str else amount_usd
-            if abs(amount_usd - expected_amount) > Decimal("0.10"):
-                logger.warning(
-                    f"Amount mismatch in Paddle transaction {transaction_id}: "
-                    f"expected ${expected_amount}, got ${amount_usd}"
-                )
+            # Validate amount matches expected (if provided)
+            expected_amount_str = custom_data.get("amount_usd", "")
+            if expected_amount_str:
+                expected_amount = Decimal(expected_amount_str)
+                if abs(amount_usd - expected_amount) > Decimal("0.10"):
+                    logger.warning(
+                        f"Amount mismatch in Paddle transaction {transaction_id}: "
+                        f"expected ${expected_amount}, got ${amount_usd}"
+                    )
             
             logger.info(f"Paddle payment success: user={user_id}, amount=${amount_usd}")
             
