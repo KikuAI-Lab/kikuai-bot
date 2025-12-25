@@ -122,12 +122,12 @@ async def request_magic_link(
 ):
     """Request a magic link for email-based login.
     
-    Creates a new account if email is not registered (enables email-only registration).
-    Sends a magic link to the email address.
+    Creates account if email not found, then sends magic link.
+    For security, always returns success message.
     """
     from api.services.email_service import send_magic_link_email
     
-    # Get or create account (enables email-only registration)
+    # Get or create account by email (allows new registrations)
     account = await AuthService.get_or_create_account_by_email(db, request.email)
     
     token = await AuthService.set_magic_link_token(db, account)
@@ -140,9 +140,10 @@ async def request_magic_link(
     else:
         logger.warning(f"Failed to send magic link to {request.email}, link: {magic_link}")
     
+    # Always return success (don't reveal if email exists or was created)
     return MagicLinkResponse(
         status="success",
-        message="A magic link has been sent to your email."
+        message="If the email is registered, a magic link has been sent."
     )
 
 

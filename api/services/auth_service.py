@@ -216,10 +216,9 @@ class AuthService:
     async def get_or_create_account_by_email(db: AsyncSession, email: str) -> Account:
         """Get existing account or create new one for email user.
         
-        This enables email-based registration - no Telegram required.
+        Used for magic link registration - creates email-only accounts
+        without requiring Telegram ID.
         """
-        from decimal import Decimal
-        
         stmt = select(Account).where(Account.email == email)
         result = await db.execute(stmt)
         account = result.scalar_one_or_none()
@@ -229,10 +228,10 @@ class AuthService:
             await db.commit()
             return account
         
-        # Create new account with email only (no telegram_id)
+        # Create new email-only account (no telegram_id)
         account = Account(
             email=email,
-            balance_usd=Decimal("0.00"),
+            telegram_id=None,
         )
         db.add(account)
         await db.commit()
