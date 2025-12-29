@@ -273,3 +273,52 @@ class AuthService:
             await db.commit()
         
         return account
+
+    @staticmethod
+    async def get_or_create_account_by_google(
+        db: AsyncSession,
+        google_id: str,
+        email: str,
+        name: Optional[str] = None,
+    ) -> Account:
+        """Get existing account or create new one for Google user.
+        
+        First tries to find by google_id, then by email (to link existing accounts).
+        """
+        # First check by google_id
+        stmt = select(Account).where(Account.google_id == google_id)
+        result = await db.execute(stmt)
+        account = result.scalar_one_or_none()
+        
+        if account:
+            account.last_active_at = datetime.utcnow()
+            # Update email if not set
+            if not account.email and email:
+                account.email = email
+            await db.commit()
+            return account
+        
+        # Check if email exists (link existing account)
+        stmt = select(Account).where(Account.email == email)
+        result = await db.execute(stmt)
+        account = result.scalar_one_or_none()
+        
+        if account:
+            # Link Google ID to existing account
+            account.google_id = google_id
+            account.last_active_at = datetime.utcnow()
+            await db.commit()
+            return account
+        
+        # Create new account
+        account = Account(
+            google_id=google_id,
+            email=email,
+            email_verified=True,  # Google verified the email
+            email_verified_at=datetime.utcnow(),
+        )
+        db.add(account)
+        await db.commit()
+        await db.refresh(account)
+        
+        return account

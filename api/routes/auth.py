@@ -251,3 +251,61 @@ async def get_current_account(
         balance_usd=str(account.balance_usd),
         created_at=account.created_at,
     )
+
+
+class GoogleAuthRequest(BaseModel):
+    """Google OAuth token from frontend."""
+    credential: str  # JWT token from Google Sign-In
+
+
+@router.post("/google", response_model=TokenPair)
+async def login_with_google(
+    auth_data: GoogleAuthRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Login with Google OAuth.
+    
+    Validates the Google ID token and returns JWT tokens.
+    Creates account if not exists.
+    """
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+    from config.settings import GOOGLE_CLIENT_ID
+    
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google OAuth not configured")
+    
+    try:
+        # Verify the Google token
+        idinfo = id_token.verify_oauth2_token(
+            auth_data.credential,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID
+        )
+        
+        google_id = idinfo['sub']
+        email = idinfo.get('email')
+        name = idinfo.get('name')
+        
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not provided by Google")
+        
+    except ValueError as e:
+        logger.error(f"Google token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+    
+    # Get or create account
+    account = await AuthService.get_or_create_account_by_google(
+        db,
+        google_id=google_id,
+        email=email,
+        name=name,
+    )
+    
+    # Create token pair
+    token_pair, refresh_hash = AuthService.create_token_pair(account)
+
+    # Store refresh token in Redis
+    _store_refresh_token(refresh_hash, account.id)
+
+    return token_pair
