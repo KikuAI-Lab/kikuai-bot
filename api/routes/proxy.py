@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from api.middleware.auth import verify_api_key, get_user
 from api.services.reliapi import ReliAPIService
-from api.services.usage_tracker import UsageTracker
+from api.services.usage_tracker_v2 import UsageTracker
 from api.services.payment_engine import PaymentEngine, InsufficientBalanceError
 
 router = APIRouter(prefix="/api/v1/proxy", tags=["proxy"])
