@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose:** Telegram bot for managing and paying KikuAI Lab API products.
+**Purpose:** Telegram bot for managing and paying KikuAI API products.
 
 **Principles:**
 - All management through Telegram bot (no web dashboards on kikuai.dev)

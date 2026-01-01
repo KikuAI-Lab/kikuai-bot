@@ -602,9 +602,9 @@ openapi: 3.1.0
 info:
   title: KikuAI Bot API
   version: 1.0.0
-  description: API for managing KikuAI Lab products through Telegram bot
+  description: API for managing KikuAI products through Telegram bot
   contact:
-    name: KikuAI Lab
+    name: KikuAI
     url: https://kikuai.dev
     email: support@kikuai.dev
 
