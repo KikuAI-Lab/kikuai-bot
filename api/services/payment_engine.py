@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 class PaymentMethod(str, Enum):
     PADDLE = "paddle"
     TELEGRAM_STARS = "telegram_stars"
+    LEMONSQUEEZY = "lemonsqueezy"
 
 
 class PaymentStatus(str, Enum):

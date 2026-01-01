@@ -19,11 +19,18 @@ RELIAPI_URL = os.getenv("RELIAPI_URL", "https://reliapi.kikuai.dev")
 # Web App
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://kikuai.dev/webapp")
 
-# Paddle
+# Paddle (disabled by default, use feature flag to enable)
+PADDLE_ENABLED = os.getenv("BILLING_PADDLE_ENABLED", "false").lower() == "true"
 PADDLE_API_KEY = os.getenv("PADDLE_API_KEY")
 PADDLE_VENDOR_ID = os.getenv("PADDLE_VENDOR_ID")
 PADDLE_WEBHOOK_SECRET = os.getenv("PADDLE_WEBHOOK_SECRET")
 PADDLE_ENVIRONMENT = os.getenv("PADDLE_ENVIRONMENT", "sandbox")  # sandbox or production
+
+# Lemon Squeezy (primary billing provider)
+LEMONSQUEEZY_ENABLED = os.getenv("BILLING_LEMONSQUEEZY_ENABLED", "true").lower() == "true"
+LEMONSQUEEZY_API_KEY = os.getenv("LEMONSQUEEZY_API_KEY")
+LEMONSQUEEZY_STORE_ID = os.getenv("LEMONSQUEEZY_STORE_ID")
+LEMONSQUEEZY_WEBHOOK_SECRET = os.getenv("LEMONSQUEEZY_WEBHOOK_SECRET")
 
 # Security
 SERVER_SECRET = os.getenv("SERVER_SECRET", "kiku-dev-secret-change-me-in-prod")

@@ -5,9 +5,13 @@ from functools import lru_cache
 
 from config.settings import (
     REDIS_URL,
+    PADDLE_ENABLED,
     PADDLE_API_KEY,
     PADDLE_WEBHOOK_SECRET,
     PADDLE_ENVIRONMENT,
+    LEMONSQUEEZY_ENABLED,
+    LEMONSQUEEZY_API_KEY,
+    LEMONSQUEEZY_WEBHOOK_SECRET,
     TELEGRAM_BOT_TOKEN,
 )
 from api.services.payment_engine import (
@@ -16,6 +20,7 @@ from api.services.payment_engine import (
     PaddleProvider,
     TelegramStarsProvider,
 )
+from api.services.lemonsqueezy_provider import LemonSqueezyProvider
 from api.services.postgres_balance_manager import PostgresBalanceManager
 from api.services.notification_service import TelegramNotificationService
 
@@ -57,7 +62,8 @@ def get_payment_engine() -> PaymentEngine:
     Initializes:
     - PostgresBalanceManager for balance operations (SQL Ledger)
     - TelegramNotificationService for user notifications
-    - PaddleProvider for card payments
+    - LemonSqueezyProvider for card payments (primary)
+    - PaddleProvider for card payments (disabled by default)
     - TelegramStarsProvider for Stars payments
     """
     global _payment_engine
@@ -75,8 +81,17 @@ def get_payment_engine() -> PaymentEngine:
             notification_service=notification_service,
         )
         
-        # Register Paddle provider
-        if PADDLE_API_KEY and PADDLE_WEBHOOK_SECRET:
+        # Register Lemon Squeezy provider (primary)
+        if LEMONSQUEEZY_ENABLED and LEMONSQUEEZY_API_KEY:
+            lemonsqueezy_provider = LemonSqueezyProvider(
+                api_key=LEMONSQUEEZY_API_KEY,
+                webhook_secret=LEMONSQUEEZY_WEBHOOK_SECRET,
+                balance_service=balance_manager,
+            )
+            _payment_engine.register_provider(PaymentMethod.LEMONSQUEEZY, lemonsqueezy_provider)
+        
+        # Register Paddle provider (disabled by default via feature flag)
+        if PADDLE_ENABLED and PADDLE_API_KEY and PADDLE_WEBHOOK_SECRET:
             paddle_provider = PaddleProvider(
                 api_key=PADDLE_API_KEY,
                 webhook_secret=PADDLE_WEBHOOK_SECRET,

@@ -30,7 +30,7 @@ def set_payment_engine(engine: PaymentEngine):
 class TopupRequest(BaseModel):
     """Top-up request model."""
     amount_usd: float
-    method: PaymentMethod = PaymentMethod.PADDLE  # Default to paddle
+    method: PaymentMethod = PaymentMethod.LEMONSQUEEZY  # Default to Lemon Squeezy
     success_url: Optional[str] = None  # Optional override from frontend
     cancel_url: Optional[str] = None
 
