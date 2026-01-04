@@ -199,6 +199,76 @@ async def login_with_telegram(
     return token_pair
 
 
+@router.get("/telegram/callback")
+async def telegram_login_callback(
+    id: int,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    username: Optional[str] = None,
+    photo_url: Optional[str] = None,
+    auth_date: int = 0,
+    hash: str = "",
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Telegram Login Widget callback endpoint.
+    
+    This receives the auth data as query parameters from the Telegram widget
+    (when using data-auth-url redirect mode) and redirects to frontend with tokens.
+    """
+    from fastapi.responses import RedirectResponse
+    from config.settings import FRONTEND_URL
+    
+    # Build auth dict from query params
+    auth_dict = {
+        "id": id,
+        "auth_date": auth_date,
+        "hash": hash,
+    }
+    if first_name:
+        auth_dict["first_name"] = first_name
+    if last_name:
+        auth_dict["last_name"] = last_name
+    if username:
+        auth_dict["username"] = username
+    if photo_url:
+        auth_dict["photo_url"] = photo_url
+    
+    # Validate Telegram auth
+    if not AuthService.validate_telegram_auth(auth_dict):
+        logger.warning(f"Telegram callback auth validation failed for id={id}")
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/auth/login?error=telegram_auth_failed",
+            status_code=302
+        )
+    
+    # Get or create account
+    account = await AuthService.get_or_create_account_by_telegram(
+        db,
+        telegram_id=id,
+        username=username,
+        first_name=first_name,
+    )
+    
+    # Create token pair
+    token_pair, refresh_hash = AuthService.create_token_pair(account)
+    
+    # Store refresh token
+    _store_refresh_token(refresh_hash, account.id)
+    
+    logger.info(f"Telegram widget login successful: telegram_id={id}, username={username}")
+    
+    # Redirect to frontend with tokens in fragment
+    redirect_url = (
+        f"{FRONTEND_URL}/auth/callback"
+        f"#access_token={token_pair.access_token}"
+        f"&refresh_token={token_pair.refresh_token}"
+        f"&expires_in={token_pair.expires_in}"
+    )
+    
+    return RedirectResponse(url=redirect_url, status_code=302)
+
+
 @router.post("/refresh", response_model=TokenPair)
 async def refresh_access_token(
     request: RefreshRequest,
